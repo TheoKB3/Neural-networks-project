@@ -1,0 +1,257 @@
+import { useState } from 'react';
+
+const NeuralNetworkVisualization = () => {
+  // Use preset configurations to avoid form elements
+  const [selectedConfig, setSelectedConfig] = useState('simple');
+  
+  // Network configurations based on the C code
+  const configurations = {
+    simple: {
+      inputSize: 5,
+      numLayers: 6,
+      neuronsPerLayer: [4, 3, 7, 8, 2, 10],
+      title: "Simple Network"
+    },
+    big: {
+      inputSize: 10,  // Reduced from 10000 for visualization purposes
+      numLayers: 6,
+      neuronsPerLayer: [12, 8, 10, 9, 6, 5],  // Proportionally reduced from [40000, 3000, 7000, 8000, 200, 15]
+      title: "Big Network (Scaled Down)"
+    }
+  };
+  
+  const networkConfig = configurations[selectedConfig];
+  const [hoveredNeuron, setHoveredNeuron] = useState(null);
+  
+  // Colors
+  const inputColor = "#6EB5FF";
+  const hiddenColor = "#FFA06E";
+  const outputColor = "#6EFFA0";
+  
+  // Calculate maximum neurons in any layer for scaling
+  const maxNeurons = Math.max(...networkConfig.neuronsPerLayer, networkConfig.inputSize);
+  
+  // Calculate dimensions
+  const svgWidth = 800;
+  const svgHeight = 500;
+  const layerGap = svgWidth / (networkConfig.numLayers + 1);
+  const neuronRadius = Math.min(12, svgHeight / (2.5 * maxNeurons));
+  
+  // Generate neuron positions
+  const layers = [];
+  
+  // Input layer
+  const inputLayer = [];
+  const inputNeuronGap = svgHeight / (networkConfig.inputSize + 1);
+  for (let i = 0; i < networkConfig.inputSize; i++) {
+    inputLayer.push({
+      x: layerGap,
+      y: (i + 1) * inputNeuronGap,
+      id: `input-${i}`
+    });
+  }
+  layers.push(inputLayer);
+  
+  // Hidden and output layers
+  for (let i = 0; i < networkConfig.numLayers; i++) {
+    const layerNeurons = [];
+    const numNeurons = networkConfig.neuronsPerLayer[i];
+    const neuronGap = svgHeight / (numNeurons + 1);
+    
+    for (let j = 0; j < numNeurons; j++) {
+      layerNeurons.push({
+        x: (i + 2) * layerGap,
+        y: (j + 1) * neuronGap,
+        id: `layer-${i}-neuron-${j}`
+      });
+    }
+    
+    layers.push(layerNeurons);
+  }
+  
+  // Generate connections
+  const connections = [];
+  for (let i = 0; i < layers.length - 1; i++) {
+    const currentLayer = layers[i];
+    const nextLayer = layers[i + 1];
+    
+    for (let j = 0; j < currentLayer.length; j++) {
+      for (let k = 0; k < nextLayer.length; k++) {
+        connections.push({
+          x1: currentLayer[j].x,
+          y1: currentLayer[j].y,
+          x2: nextLayer[k].x,
+          y2: nextLayer[k].y,
+          id: `${currentLayer[j].id}-to-${nextLayer[k].id}`
+        });
+      }
+    }
+  }
+  
+  const handleNeuronHover = (neuronId) => {
+    setHoveredNeuron(neuronId);
+  };
+  
+  const handleNeuronLeave = () => {
+    setHoveredNeuron(null);
+  };
+  
+  // Info panel content
+  const getInfoContent = () => {
+    if (!hoveredNeuron) {
+      return (
+        <div>
+          <h3 className="text-lg font-bold">Neural Network Structure</h3>
+          <p>Input size: {networkConfig.inputSize}</p>
+          <p>Number of layers: {networkConfig.numLayers}</p>
+          <p>Total neurons: {networkConfig.neuronsPerLayer.reduce((a, b) => a + b, 0)}</p>
+          <p>Hover over neurons for details</p>
+        </div>
+      );
+    }
+    
+    const parts = hoveredNeuron.split('-');
+    if (parts[0] === 'input') {
+      return (
+        <div>
+          <h3 className="text-lg font-bold">Input {parseInt(parts[1]) + 1}</h3>
+          <p>Connects to all neurons in first hidden layer</p>
+          <p>In C code: x[{parts[1]}]</p>
+        </div>
+      );
+    } else {
+      const layerIdx = parseInt(parts[1]);
+      const neuronIdx = parseInt(parts[3]);
+      return (
+        <div>
+          <h3 className="text-lg font-bold">Layer {layerIdx + 1}, Neuron {neuronIdx + 1}</h3>
+          <p>Inputs: {layerIdx === 0 ? networkConfig.inputSize : networkConfig.neuronsPerLayer[layerIdx - 1]}</p>
+          <p>Activation function: Sigmoid (1/(1+e^-x))</p>
+          <p>In C code: network.lArray[{layerIdx}].nArray[{neuronIdx}]</p>
+          <p>Has weights and bias parameters</p>
+        </div>
+      );
+    }
+  };
+  
+  // Extract function from C code
+  const neuralNetworkCode = `double ForwardPassNeuron(neuron* n, double* x){
+    //Get the input size 
+    int inputSize = (*n).inputSize;
+    //memory for the solution
+    double output = 0;
+    //first apply the weight 
+    for(int i = 0;i<inputSize;i++){
+        output = output + (*n).w[i]*x[i];
+    }
+    //apply the bias 
+    output = output + (*n).b;
+    //apply an activation function 
+    output = 1/(1+exp(-output));
+    return output;
+}`;
+  
+  return (
+    <div className="flex flex-col space-y-4">
+      <div className="p-4 bg-gray-100 rounded-lg">
+        <h2 className="text-xl font-bold mb-2">{networkConfig.title} Visualization</h2>
+        <div className="flex space-x-4">
+          <button 
+            onClick={() => setSelectedConfig('simple')}
+            className={`px-4 py-2 rounded ${selectedConfig === 'simple' ? 'bg-blue-500 text-white' : 'bg-gray-300'}`}
+          >
+            Simple Network
+          </button>
+          <button 
+            onClick={() => setSelectedConfig('big')}
+            className={`px-4 py-2 rounded ${selectedConfig === 'big' ? 'bg-blue-500 text-white' : 'bg-gray-300'}`}
+          >
+            Big Network
+          </button>
+        </div>
+      </div>
+      
+      <div className="flex">
+        <svg width={svgWidth} height={svgHeight} className="border rounded">
+          {/* Connections */}
+          {connections.map((conn) => (
+            <line
+              key={conn.id}
+              x1={conn.x1}
+              y1={conn.y1}
+              x2={conn.x2}
+              y2={conn.y2}
+              stroke="#aaa"
+              strokeWidth="0.5"
+              opacity="0.6"
+            />
+          ))}
+          
+          {/* Neurons */}
+          {layers.map((layer, layerIdx) => (
+            layer.map((neuron) => {
+              // Determine color based on layer
+              let fillColor = hiddenColor;
+              if (layerIdx === 0) fillColor = inputColor;
+              if (layerIdx === layers.length - 1) fillColor = outputColor;
+              
+              return (
+                <circle
+                  key={neuron.id}
+                  cx={neuron.x}
+                  cy={neuron.y}
+                  r={neuronRadius}
+                  fill={fillColor}
+                  stroke={hoveredNeuron === neuron.id ? "#000" : "none"}
+                  strokeWidth="2"
+                  onMouseEnter={() => handleNeuronHover(neuron.id)}
+                  onMouseLeave={handleNeuronLeave}
+                  className="cursor-pointer"
+                />
+              );
+            })
+          ))}
+          
+          {/* Layer labels */}
+          <text x={layerGap} y={20} textAnchor="middle" className="font-semibold">Input</text>
+          {Array.from({length: networkConfig.numLayers}).map((_, i) => (
+            <text 
+              key={`layer-label-${i}`} 
+              x={(i + 2) * layerGap} 
+              y={20} 
+              textAnchor="middle"
+              className="font-semibold"
+            >
+              {i === networkConfig.numLayers - 1 ? 'Output' : `Hidden ${i + 1}`}
+            </text>
+          ))}
+        </svg>
+        
+        <div className="ml-4 w-64 p-4 bg-gray-100 rounded-lg">
+          {getInfoContent()}
+        </div>
+      </div>
+      
+      <div className="p-4 bg-gray-100 rounded-lg">
+        <h3 className="font-bold mb-2">Network Computation (from C code)</h3>
+        <pre className="bg-gray-800 text-green-400 p-3 rounded overflow-x-auto text-sm">
+          {neuralNetworkCode}
+        </pre>
+      </div>
+      
+      <div className="p-4 bg-gray-100 rounded-lg">
+        <h3 className="font-bold mb-2">Code Features</h3>
+        <ul className="list-disc ml-5">
+          <li>Feedforward neural network implementation in C</li>
+          <li>Supports multiple layers with configurable neurons per layer</li>
+          <li>Uses sigmoid activation function: 1/(1+e^-x)</li>
+          <li>Has weights and bias parameters for each neuron</li>
+          <li>Can run in "simple" or "big" network mode</li>
+          <li>TODOs in code suggest parallelization opportunities with threads or fork/pipe</li>
+        </ul>
+      </div>
+    </div>
+  );
+};
+
+export default NeuralNetworkVisualization;
